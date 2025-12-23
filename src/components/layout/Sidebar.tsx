@@ -1,24 +1,55 @@
 import { NavLink } from 'react-router-dom';
-import { Home, Users, BarChart3, Bot, Plug, Settings, X, Activity, ChevronRight } from 'lucide-react';
+import { Home, Users, BarChart3, Bot, Plug, Settings, X, Activity, ChevronRight, Building2, Shield, FileText } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Logo } from '../ui/Logo';
+import { useAuth } from '../../contexts/AuthContext';
+import { UserRole } from '../../lib/database.types';
 
 interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const navigation = [
+interface NavItem {
+  name: string;
+  to: string;
+  icon: typeof Home;
+  description: string;
+  roles?: UserRole[];
+  requirePermission?: 'can_view_analytics' | 'can_manage_leads';
+}
+
+const navigation: NavItem[] = [
   { name: 'Dashboard', to: '/dashboard', icon: Home, description: 'Overview & stats' },
+  { name: 'Super Admin', to: '/super-admin', icon: Building2, description: 'System management', roles: ['super_admin'] },
+  { name: 'User Management', to: '/users', icon: Shield, description: 'Manage team', roles: ['super_admin', 'admin'] },
   { name: 'Leads', to: '/leads', icon: Users, description: 'Manage leads' },
-  { name: 'Analytics', to: '/analytics', icon: BarChart3, description: 'Charts & insights' },
-  { name: 'Call Analytics', to: '/call-analytics', icon: Activity, description: 'Call metrics' },
-  { name: 'Agents', to: '/agents', icon: Bot, description: 'AI voice agents' },
-  { name: 'Integrations', to: '/integrations', icon: Plug, description: 'Connect apps' },
+  { name: 'Analytics', to: '/analytics', icon: BarChart3, description: 'Charts & insights', requirePermission: 'can_view_analytics' },
+  { name: 'Call Analytics', to: '/call-analytics', icon: Activity, description: 'Call metrics', requirePermission: 'can_view_analytics' },
+  { name: 'Agents', to: '/agents', icon: Bot, description: 'AI voice agents', roles: ['super_admin', 'admin'] },
+  { name: 'Integrations', to: '/integrations', icon: Plug, description: 'Connect apps', roles: ['super_admin', 'admin'] },
+  { name: 'Audit Logs', to: '/audit-logs', icon: FileText, description: 'Activity history', roles: ['super_admin', 'admin'] },
   { name: 'Settings', to: '/settings', icon: Settings, description: 'Preferences' },
 ];
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
+  const { profile, hasPermission, isSuperAdmin, isAdmin } = useAuth();
+
+  const filteredNavigation = navigation.filter((item) => {
+    if (item.roles) {
+      if (!profile?.role) return false;
+      if (!item.roles.includes(profile.role as UserRole)) return false;
+    }
+
+    if (item.requirePermission) {
+      if (!isSuperAdmin && !isAdmin && !hasPermission(item.requirePermission)) {
+        return false;
+      }
+    }
+
+    return true;
+  });
+
   return (
     <>
       {isOpen && (
@@ -52,6 +83,22 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </button>
         </div>
 
+        {profile && (
+          <div className="px-4 py-3 border-b border-slate-200/80">
+            <div className="flex items-center gap-3 p-2 bg-slate-50 rounded-xl">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-sm font-semibold">
+                {profile.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-slate-900 truncate">{profile.name}</p>
+                <p className="text-[10px] text-slate-500 capitalize">
+                  {profile.role === 'super_admin' ? 'Super Admin' : profile.role}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="flex-1 overflow-y-auto px-4 py-4" style={{
           scrollbarWidth: 'thin',
           scrollbarColor: '#cbd5e1 #f1f5f9'
@@ -74,7 +121,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           `}</style>
           <p className="px-3 mb-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Main Menu</p>
           <nav className="space-y-1 sidebar-nav">
-            {navigation.map((item) => (
+            {filteredNavigation.map((item) => (
               <NavLink
                 key={item.name}
                 to={item.to}

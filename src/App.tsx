@@ -15,6 +15,9 @@ const Agents = lazy(() => import('./pages/Agents').then(m => ({ default: m.Agent
 const Integrations = lazy(() => import('./pages/Integrations').then(m => ({ default: m.Integrations })));
 const CallAnalytics = lazy(() => import('./pages/CallAnalytics').then(m => ({ default: m.CallAnalytics })));
 const Settings = lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
+const SuperAdminDashboard = lazy(() => import('./pages/SuperAdminDashboard').then(m => ({ default: m.SuperAdminDashboard })));
+const UserManagement = lazy(() => import('./pages/UserManagement').then(m => ({ default: m.UserManagement })));
+const AuditLogs = lazy(() => import('./pages/AuditLogs').then(m => ({ default: m.AuditLogs })));
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -77,12 +80,15 @@ function App() {
               <Route path="/" element={<ProtectedRoute><AppLayout title="Dashboard" /></ProtectedRoute>}>
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<Dashboard />} />
+                <Route path="super-admin" element={<SuperAdminDashboard />} />
+                <Route path="users" element={<UserManagement />} />
                 <Route path="leads" element={<Leads />} />
                 <Route path="leads/:id" element={<LeadDetail />} />
                 <Route path="analytics" element={<Analytics />} />
                 <Route path="agents" element={<Agents />} />
                 <Route path="integrations" element={<Integrations />} />
                 <Route path="call-analytics" element={<CallAnalytics />} />
+                <Route path="audit-logs" element={<AuditLogs />} />
                 <Route path="settings" element={<Settings />} />
               </Route>
 
