@@ -17,6 +17,7 @@ import {
   Trash2,
   RefreshCw,
   UserPlus,
+  X,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,6 +41,9 @@ export function UserManagement() {
   const [showPermissionModal, setShowPermissionModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<UserWithPermissions | null>(null);
   const [actionMenuUser, setActionMenuUser] = useState<string | null>(null);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterRole, setFilterRole] = useState<string>('');
+  const [filterStatus, setFilterStatus] = useState<string>('');
 
   useEffect(() => {
     if (!isAdmin) {
@@ -108,10 +112,15 @@ export function UserManagement() {
     setActionMenuUser(null);
   };
 
-  const filteredUsers = users.filter(u =>
-    u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const hasActiveFilters = filterRole || filterStatus;
+
+  const filteredUsers = users.filter(u => {
+    const matchesSearch = u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = !filterRole || u.role === filterRole;
+    const matchesStatus = !filterStatus || (filterStatus === 'active' ? u.is_active : !u.is_active);
+    return matchesSearch && matchesRole && matchesStatus;
+  });
 
   const getRoleBadge = (role: string) => {
     switch (role) {
@@ -177,8 +186,17 @@ export function UserManagement() {
                   className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
                 />
               </div>
-              <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                <Filter className="w-4 h-4 text-slate-500" />
+              <button
+                onClick={() => setShowFilterModal(true)}
+                className={cn(
+                  "p-2 hover:bg-slate-100 rounded-xl transition-colors relative",
+                  hasActiveFilters && "bg-blue-50"
+                )}
+              >
+                <Filter className={cn("w-4 h-4", hasActiveFilters ? "text-blue-600" : "text-slate-500")} />
+                {hasActiveFilters && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full" />
+                )}
               </button>
             </div>
             <p className="text-sm text-slate-500">{filteredUsers.length} users</p>
@@ -347,6 +365,70 @@ export function UserManagement() {
           }}
           onSave={loadUsers}
         />
+      )}
+
+      {showFilterModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">Filter Users</h2>
+              <button
+                onClick={() => setShowFilterModal(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Role</label>
+                <select
+                  value={filterRole}
+                  onChange={(e) => setFilterRole(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Roles</option>
+                  <option value="super_admin">Super Admin</option>
+                  <option value="admin">Admin</option>
+                  <option value="user">User</option>
+                  <option value="member">Member</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterRole('');
+                    setFilterStatus('');
+                    setShowFilterModal(false);
+                  }}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors font-medium"
+                >
+                  Clear Filters
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFilterModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Apply Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

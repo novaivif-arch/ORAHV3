@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
-import { BarChart3, TrendingUp, Clock, Users, ArrowUpRight, ArrowDownRight, Calendar, Filter } from 'lucide-react';
+import { BarChart3, TrendingUp, Clock, Users, ArrowUpRight, ArrowDownRight, Calendar, Filter, X } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { Database } from '../lib/database.types';
 import { getTimeCategory } from '../lib/timeClassification';
+import { cn } from '../lib/utils';
 
 type Lead = Database['public']['Tables']['leads']['Row'];
 
@@ -31,6 +32,9 @@ export function Analytics() {
   });
   const [loading, setLoading] = useState(true);
   const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d'>('30d');
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [filterTimeCategory, setFilterTimeCategory] = useState<string>('');
 
   useEffect(() => {
     const fetchAnalytics = async () => {
@@ -42,19 +46,33 @@ export function Analytics() {
       try {
         setLoading(true);
 
+        const now = new Date();
+        const daysMap = { '7d': 7, '30d': 30, '90d': 90 };
+        const startDate = new Date(now.getTime() - daysMap[timeRange] * 24 * 60 * 60 * 1000);
+
         const [leadsResult, callsResult] = await Promise.all([
           supabase
             .from('leads')
             .select('*')
-            .eq('company_id', profile.company_id),
+            .eq('company_id', profile.company_id)
+            .gte('created_at', startDate.toISOString()),
           supabase
             .from('calls')
-            .select('lead_id, success_evaluation')
-            .eq('company_id', profile.company_id),
+            .select('lead_id, success_evaluation, created_at')
+            .eq('company_id', profile.company_id)
+            .gte('created_at', startDate.toISOString()),
         ]);
 
-        const leads = leadsResult.data || [];
+        let leads = leadsResult.data || [];
         const calls = callsResult.data || [];
+
+        if (filterStatus) {
+          leads = leads.filter(l => l.status === filterStatus);
+        }
+
+        if (filterTimeCategory) {
+          leads = leads.filter(l => getTimeCategory(l.created_at) === filterTimeCategory);
+        }
 
         const byStatus: Record<string, number> = {};
         const byTimeCategory: Record<string, number> = { 'Working Hours': 0, 'Non-Working Hours': 0 };
@@ -85,7 +103,6 @@ export function Analytics() {
           count: byHourMap[i] || 0,
         }));
 
-        const now = new Date();
         const lastWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
         const prevWeek = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
 
@@ -116,7 +133,7 @@ export function Analytics() {
     };
 
     fetchAnalytics();
-  }, [profile?.company_id, authLoading, timeRange]);
+  }, [profile?.company_id, authLoading, timeRange, filterStatus, filterTimeCategory]);
 
   if (loading) {
     return (
@@ -165,8 +182,17 @@ export function Analytics() {
               </button>
             ))}
           </div>
-          <button className="p-2.5 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
-            <Filter className="w-5 h-5 text-slate-600" />
+          <button
+            onClick={() => setShowFilterModal(true)}
+            className={cn(
+              "p-2.5 rounded-xl hover:bg-slate-200 transition-colors relative",
+              (filterStatus || filterTimeCategory) ? "bg-blue-50" : "bg-slate-100"
+            )}
+          >
+            <Filter className={cn("w-5 h-5", (filterStatus || filterTimeCategory) ? "text-blue-600" : "text-slate-600")} />
+            {(filterStatus || filterTimeCategory) && (
+              <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full" />
+            )}
           </button>
         </div>
       </div>
@@ -415,6 +441,71 @@ export function Analytics() {
           </div>
         </CardContent>
       </Card>
+
+      {showFilterModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">Filter Analytics</h2>
+              <button
+                onClick={() => setShowFilterModal(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Lead Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="new">New</option>
+                  <option value="contacted">Contacted</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="converted">Converted</option>
+                  <option value="lost">Lost</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Time Category</label>
+                <select
+                  value={filterTimeCategory}
+                  onChange={(e) => setFilterTimeCategory(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Hours</option>
+                  <option value="Working Hours">Working Hours Only</option>
+                  <option value="Non-Working Hours">Non-Working Hours Only</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterStatus('');
+                    setFilterTimeCategory('');
+                    setShowFilterModal(false);
+                  }}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors font-medium"
+                >
+                  Clear Filters
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowFilterModal(false)}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Apply Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

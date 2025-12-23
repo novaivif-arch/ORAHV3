@@ -15,6 +15,8 @@ import {
   Filter,
   Download,
   RefreshCw,
+  X,
+  Loader2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -31,13 +33,17 @@ interface CompanyWithStats extends Company {
 
 export function SuperAdminDashboard() {
   const navigate = useNavigate();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, session } = useAuth();
   const [companies, setCompanies] = useState<CompanyWithStats[]>([]);
   const [admins, setAdmins] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCompany, setSelectedCompany] = useState<CompanyWithStats | null>(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [showFilterModal, setShowFilterModal] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [filterStatus, setFilterStatus] = useState<string>('');
+  const [filterTier, setFilterTier] = useState<string>('');
   const [stats, setStats] = useState({
     totalCompanies: 0,
     activeCompanies: 0,
@@ -122,9 +128,60 @@ export function SuperAdminDashboard() {
     }
   };
 
-  const filteredCompanies = companies.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const handleExport = async () => {
+    if (!session?.access_token) return;
+
+    setExporting(true);
+    try {
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-data`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+            'Content-Type': 'application/json',
+            'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+          },
+          body: JSON.stringify({ type: 'companies' }),
+        }
+      );
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `companies-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }
+    } catch (error) {
+      console.error('Error exporting data:', error);
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const applyFilters = () => {
+    setShowFilterModal(false);
+  };
+
+  const clearFilters = () => {
+    setFilterStatus('');
+    setFilterTier('');
+    setShowFilterModal(false);
+  };
+
+  const hasActiveFilters = filterStatus || filterTier;
+
+  const filteredCompanies = companies.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = !filterStatus || c.subscription_status === filterStatus;
+    const matchesTier = !filterTier || c.subscription_tier === filterTier;
+    return matchesSearch && matchesStatus && matchesTier;
+  });
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -257,11 +314,28 @@ export function SuperAdminDashboard() {
                   className="pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                <Filter className="w-4 h-4 text-slate-500" />
+              <button
+                onClick={() => setShowFilterModal(true)}
+                className={cn(
+                  "p-2 hover:bg-slate-100 rounded-xl transition-colors relative",
+                  hasActiveFilters && "bg-blue-50"
+                )}
+              >
+                <Filter className={cn("w-4 h-4", hasActiveFilters ? "text-blue-600" : "text-slate-500")} />
+                {hasActiveFilters && (
+                  <span className="absolute -top-1 -right-1 w-2 h-2 bg-blue-600 rounded-full" />
+                )}
               </button>
-              <button className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                <Download className="w-4 h-4 text-slate-500" />
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className="p-2 hover:bg-slate-100 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {exporting ? (
+                  <Loader2 className="w-4 h-4 text-slate-500 animate-spin" />
+                ) : (
+                  <Download className="w-4 h-4 text-slate-500" />
+                )}
               </button>
             </div>
           </div>
@@ -399,6 +473,67 @@ export function SuperAdminDashboard() {
           onClose={() => setShowCompanyModal(false)}
           onSave={loadData}
         />
+      )}
+
+      {showFilterModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl w-full max-w-md mx-4 overflow-hidden">
+            <div className="p-6 border-b border-slate-200 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-slate-900">Filter Companies</h2>
+              <button
+                onClick={() => setShowFilterModal(false)}
+                className="p-1.5 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X className="w-4 h-4 text-slate-500" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Subscription Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Subscription Tier</label>
+                <select
+                  value={filterTier}
+                  onChange={(e) => setFilterTier(e.target.value)}
+                  className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="">All Tiers</option>
+                  <option value="free">Free</option>
+                  <option value="basic">Basic</option>
+                  <option value="pro">Pro</option>
+                  <option value="enterprise">Enterprise</option>
+                </select>
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors font-medium"
+                >
+                  Clear Filters
+                </button>
+                <button
+                  type="button"
+                  onClick={applyFilters}
+                  className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Apply Filters
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
